@@ -1,5 +1,5 @@
 lume = require "lib.lume"
-RES = require"engine.res"
+ENGINE = require"engine"
 
 local lurker = require("test.lib.lurker")
 local bins = {}
@@ -10,6 +10,9 @@ end
 
 function love.update(dt)
     lurker.update()
+    if GAME then
+        GAME.step(GAME.state)
+    end
 end
 
 function love.draw()
@@ -28,13 +31,14 @@ end
 
 function love.keypressed(k)
     if GAME then
-        GAME.command({
+        GAME.command(GAME.state, {
             type = "keypressed",
             key = k
         })
     else
         if k == "space" then
             GAME = require("game")
+            ENGINE.assets.setup(GAME.asset_data)
         else
             local game_idx = tonumber(k)
             if game_idx then
@@ -47,5 +51,14 @@ function love.keypressed(k)
                 end
             end
         end
+    end
+end
+
+function love.keyreleased(k)
+    if GAME then
+        GAME.command(GAME.state, {
+            type = "keyreleased",
+            key = k
+        })
     end
 end
