@@ -36,4 +36,10 @@ function assets.get(path)
     return assets.map[path]
 end
 
+function assets.clear(...)
+    for k, v in pairs(assets.map) do
+        v:release()
+    end
+end
+
 return assets

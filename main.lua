@@ -17,7 +17,7 @@ end
 function love.update(dt)
     lurker.update()
     if game then
-        game:command({})
+        game:process({})
     end
 end
 
@@ -76,23 +76,26 @@ function love.keypressed(k)
             elseif k == "e" then
                 game.state = lume.deserialize(love.filesystem.read(_slot_file_name()))
                 _toast(string.format("state loaded: #%d", state_slot_idx))
+            elseif k == "x" then
+                game = nil
+                ENGINE.assets.clear()
             end
         else
-            game:command({
+            game:process({
                 type = "keypressed",
                 key = k
             })
         end
     else
         if k == "space" then
-            game = require("game")
+            game = dofile("game.lua")
             ENGINE.assets.setup(game.asset_data)
         else
             local game_idx = tonumber(k)
             if game_idx then
                 local game_path = bins[game_idx]
                 local result, err = pcall(function()
-                    game = require(game_path)
+                    game = dofile(game_path)
                 end)
                 if not result then
                     print(err)
@@ -104,7 +107,7 @@ end
 
 function love.keyreleased(k)
     if game then
-        game:command({
+        game:process({
             type = "keyreleased",
             key = k
         })
