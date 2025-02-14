@@ -10,7 +10,10 @@ local bottom_toast_state = {
     start_time = -1
 }
 
+local game_canvas = nil
+
 function love.load()
+    love.graphics.setDefaultFilter("nearest", "nearest", 1)
     bins = lurker.listdir("test/bin")
 end
 
@@ -45,7 +48,14 @@ end
 function love.draw()
     local current_font = love.graphics.getFont()
     if game then
+        love.graphics.setCanvas(game_canvas)
         game:draw()
+        love.graphics.setCanvas()
+        local seX, seY, seW, seH = love.window.getSafeArea()
+        love.graphics.push()
+        love.graphics.scale(seW / game.config_data.game_width, seH / game.config_data.game_height)
+        love.graphics.draw(game_canvas, 0, 0)
+        love.graphics.pop()
     else
         local y = 10
         love.graphics.print("No Game", 10, y)
@@ -76,9 +86,15 @@ function love.keypressed(k)
             elseif k == "e" then
                 game.state = lume.deserialize(love.filesystem.read(_slot_file_name()))
                 _toast(string.format("state loaded: #%d", state_slot_idx))
+            elseif k == "s" then
+                os.execute("start "..love.filesystem.getSaveDirectory())
             elseif k == "x" then
                 game = nil
                 ENGINE.assets.clear()
+                if game_canvas then
+                    game_canvas:release()
+                    game_canvas = nil
+                end
             end
         else
             game:process({
@@ -89,7 +105,32 @@ function love.keypressed(k)
     else
         if k == "space" then
             game = dofile("game.lua")
+            local gw, gh = game.config_data.game_width, game.config_data.game_height
+            game_canvas = love.graphics.newCanvas(gw, gh)
             ENGINE.assets.setup(game.asset_data)
+            love.filesystem.setIdentity(game.config_data.identity)
+            love.window.setTitle(game.config_data.identity)
+            local saved_settings_str = love.filesystem.read("settings.txt")
+            local saved_settings = nil
+            if saved_settings_str then
+                saved_settings = lume.deserialize(love.filesystem.read("settings.txt"))
+            end
+            if not saved_settings then
+                saved_settings = game.config_data.default_settings
+                love.filesystem.write("settings.txt", lume.serialize(saved_settings))
+            end
+            local ws = saved_settings.window_scale
+            local ow, oh, of = love.window.getMode()
+            of.fullscreen = saved_settings.fullscreen
+            if saved_settings.fullscreen then
+                love.window.setMode(0, 0, of)
+            else
+                love.window.setMode(gw * ws, gh * ws, of)
+            end
+            game:process({
+                type = "set_preferences",
+                preferences = lume.clone(saved_settings.preferences)
+            })
         else
             local game_idx = tonumber(k)
             if game_idx then

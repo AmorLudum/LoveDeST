@@ -22,6 +22,8 @@ function main.process(cmd, state, data, events)
         if cmd.key == "d" then
             state.d = false
         end
+    elseif cmd.type == "set_preferences" then
+        state.preferences = cmd.preferences
     end
 end
 
