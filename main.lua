@@ -4,6 +4,7 @@ ENGINE = require"engine"
 local game
 local origin_game_state
 local lurker = require("test.lib.lurker")
+local test_monitor = require("test.monitor.test_monitor")
 local bins = {}
 local state_slot_idx = 0
 local bottom_toast_state = {
@@ -19,6 +20,9 @@ local running_replay_speed_scales = {
     1, 2, 5, 10, 20, 50, 100, 500
 }
 local memorized_game_state_steps = 60
+
+-- monitor
+local monitor_draw_func = nil
 local function _table_deepcopy(t)
     local r = {}
     for k, v in pairs(t) do
@@ -158,7 +162,29 @@ local function _print_bottom_contents()
     end
     if recording_replay then
         love.graphics.setColor(0.8, 0.1, 0.1, 1.0)
-        love.graphics.circle("fill", 30, seH - 50, 15)
+        if math.floor(love.timer.getTime()) % 2 == 0 then
+            love.graphics.circle("fill", 30, seH - 50, 15)
+        end
+    end
+    if running_replay and running_replay_control then
+        love.graphics.setColor(r * 0.1, g * 0.1, b * 0.1, 0.5)
+        love.graphics.rectangle("fill", 0, seH - 18, seW, 18)
+        love.graphics.setColor(r, g, b, 1)
+        love.graphics.print(string.format("start_frame: %d, method: %s, current_frame: %d, time_scale: x%d",
+            running_replay.state and running_replay.state.frame or 0,
+            running_replay_control.method,
+            game.state.frame,
+            running_replay_speed_scales[running_replay_control.speed_idx]),
+            10, seH - 16)
+    end
+    if game and monitor_draw_func then
+        love.graphics.push()
+        love.graphics.translate(seW - 300, 0)
+        love.graphics.setColor(r * 0.1, g * 0.1, b * 0.1, 0.5)
+        love.graphics.rectangle("fill", 0, 0, 300, seH)
+        love.graphics.setColor(r, g, b, 1)
+        monitor_draw_func(game.state)
+        love.graphics.pop()
     end
     love.graphics.setColor(r, g, b, a)
 end
@@ -257,6 +283,12 @@ function love.keypressed(k)
                 if game_canvas then
                     game_canvas:release()
                     game_canvas = nil
+                end
+            elseif k == "c" then
+                if monitor_draw_func then
+                    monitor_draw_func = nil
+                else
+                    monitor_draw_func = dofile("test/monitor/test_monitor.lua")
                 end
             elseif k == "up" then
                 _try_switch_replay_speed_scale(1)
