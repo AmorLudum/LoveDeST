@@ -13,6 +13,31 @@ local bottom_toast_state = {
 local game_canvas = nil
 local recording_replay = nil
 local running_replay = nil
+local running_replay_control = nil
+local running_replay_speed_scales = {
+    1, 2, 5, 10, 20, 50, 100, 500
+}
+local function _table_deepcopy(t)
+    local r = {}
+    for k, v in pairs(t) do
+        if type(v) == "table" then
+            r[k] = _table_deepcopy(v)
+        else
+            r[k] = v
+        end
+    end
+    return r
+end
+local function _toast(str)
+    bottom_toast_state.content = str
+    bottom_toast_state.start_time = love.timer.getTime()
+end
+local function _try_switch_replay_speed_scale(v)
+    if running_replay_control then
+        running_replay_control.speed_idx = lume.clamp(running_replay_control.speed_idx + v, 1, #running_replay_speed_scales)
+        _toast(string.format("switch replay speed scale: x%d", running_replay_speed_scales[running_replay_control.speed_idx]))
+    end
+end
 
 local function _step_game()
     if game then
@@ -25,6 +50,17 @@ local function _step_game()
             end
         end
         game:process({})
+    end
+end
+
+local function _try_single_step(v)
+    if running_replay_control then
+        running_replay_control.method = 1
+        if v > 0 then
+            for i = 1, running_replay_speed_scales[running_replay_control.speed_idx] do
+                _step_game()
+            end
+        end
     end
 end
 
@@ -48,7 +84,19 @@ end
 
 function love.update(dt)
     lurker.update()
-    _step_game()
+    local step_count = 0
+    if not running_replay_control then
+        step_count = 1
+    else
+        if running_replay_control.method == 0 then
+            step_count = running_replay_speed_scales[running_replay_control.speed_idx]
+        elseif running_replay_control.method == 1 then
+            step_count = 0
+        end
+    end
+    for i = 1, step_count do
+        _step_game()
+    end
 end
 
 local function _print_bottom_contents()
@@ -69,11 +117,6 @@ local function _print_bottom_contents()
         love.graphics.circle("fill", 30, seH - 50, 15)
     end
     love.graphics.setColor(r, g, b, a)
-end
-
-local function _toast(str)
-    bottom_toast_state.content = str
-    bottom_toast_state.start_time = love.timer.getTime()
 end
 
 function love.draw()
@@ -107,19 +150,19 @@ end
 function love.keypressed(k)
     if love.keyboard.isDown("lctrl") then
         if k == "r" then
-           if not recording_replay then
+           if not running_replay and not recording_replay then
                 recording_replay = {}
                 if game then
-                    recording_replay.state = lume.clone(game.state)
+                    recording_replay.state = _table_deepcopy(game.state)
                 end
                 recording_replay.cmds = {}
-                print(string.format("00 recording_replay.state = %s", recording_replay.state))
            end
         elseif k == "f" then
             if recording_replay then
-                print(string.format("01 recording_replay.state = %s", recording_replay.state))
-                love.filesystem.write(string.format("replay_%d.txt", state_slot_idx), lume.serialize(recording_replay))
+                local file_name = string.format("replay_%d.txt", state_slot_idx)
+                love.filesystem.write(file_name, lume.serialize(recording_replay))
                 recording_replay = nil
+                _toast(string.format("replay saved: #%d", state_slot_idx))
             end
         end
     end
@@ -135,20 +178,36 @@ function love.keypressed(k)
             elseif k == "e" then
                 game.state = lume.deserialize(love.filesystem.read(_slot_file_name()))
                 _toast(string.format("state loaded: #%d", state_slot_idx))
-            elseif k == "s" then
+            elseif k == "d" then
                 os.execute("start "..love.filesystem.getSaveDirectory())
             elseif k == "w" then
-                local loaded_replay_str = love.filesystem.read(string.format("replay_%d.txt", state_slot_idx))
-                if loaded_replay_str then
-                    running_replay = lume.deserialize(loaded_replay_str)
+                if not recording_replay then
+                    if not running_replay then
+                        local loaded_replay_str = love.filesystem.read(string.format("replay_%d.txt", state_slot_idx))
+                        if loaded_replay_str then
+                            running_replay = lume.deserialize(loaded_replay_str)
+                            _toast(string.format("replay loaded: #%d", state_slot_idx))
+                        end
+                    end
                     if running_replay.state then
-                        game.state = running_replay.state
+                        game.state = _table_deepcopy(running_replay.state)
                     else
                         local new_game = dofile("game.lua")
                         game.state = new_game.state
                     end
-                    _toast(string.format("replay loaded: #%d", state_slot_idx))
+                    if not running_replay_control then
+                        running_replay_control = {
+                            method = 0,
+                            speed_idx = 1
+                        }
+                    end
+                else
+                    _toast("!! recording")
                 end
+            elseif k == "s" then
+                running_replay = nil
+                running_replay_control = nil
+                _toast("replay finished")
             elseif k == "x" then
                 game = nil
                 ENGINE.assets.clear()
@@ -156,6 +215,14 @@ function love.keypressed(k)
                     game_canvas:release()
                     game_canvas = nil
                 end
+            elseif k == "up" then
+                _try_switch_replay_speed_scale(1)
+            elseif k == "down" then
+                _try_switch_replay_speed_scale(-1)
+            elseif k == "left" then
+                _try_single_step(-1)
+            elseif k == "right" then
+                _try_single_step(1)
             end
         else
             if not running_replay then
@@ -192,7 +259,7 @@ function love.keypressed(k)
             end
             _process_command({
                 type = "set_preferences",
-                preferences = lume.clone(saved_settings.preferences)
+                preferences = _table_deepcopy(saved_settings.preferences)
             })
             local rng = love.math.newRandomGenerator(os.time())
             _process_command({
