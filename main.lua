@@ -113,9 +113,11 @@ function love.keypressed(k)
                     recording_replay.state = lume.clone(game.state)
                 end
                 recording_replay.cmds = {}
+                print(string.format("00 recording_replay.state = %s", recording_replay.state))
            end
         elseif k == "f" then
             if recording_replay then
+                print(string.format("01 recording_replay.state = %s", recording_replay.state))
                 love.filesystem.write(string.format("replay_%d.txt", state_slot_idx), lume.serialize(recording_replay))
                 recording_replay = nil
             end
@@ -166,9 +168,6 @@ function love.keypressed(k)
     else
         if k == "space" then
             game = dofile("game.lua")
-            if recording_replay then
-                recording_replay.state = lume.clone(game.state)
-            end
             local gw, gh = game.config_data.game_width, game.config_data.game_height
             game_canvas = love.graphics.newCanvas(gw, gh)
             ENGINE.assets.setup(game.asset_data)
@@ -194,6 +193,11 @@ function love.keypressed(k)
             _process_command({
                 type = "set_preferences",
                 preferences = lume.clone(saved_settings.preferences)
+            })
+            local rng = love.math.newRandomGenerator(os.time())
+            _process_command({
+                type = "set_rng_state",
+                rng_state = rng:getState()
             })
         else
             local game_idx = tonumber(k)

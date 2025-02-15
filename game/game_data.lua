@@ -1,5 +1,8 @@
 local game_data = {
-    s = 1
+    player_data = {
+        speed = 2,
+        size = 15
+    }
 }
 
 return game_data
