@@ -2,6 +2,7 @@ lume = require "lib.lume"
 ENGINE = require"engine"
 
 local game
+local origin_game_state
 local lurker = require("test.lib.lurker")
 local bins = {}
 local state_slot_idx = 0
@@ -17,6 +18,7 @@ local running_replay_control = nil
 local running_replay_speed_scales = {
     1, 2, 5, 10, 20, 50, 100, 500
 }
+local memorized_game_state_steps = 60
 local function _table_deepcopy(t)
     local r = {}
     for k, v in pairs(t) do
@@ -52,14 +54,56 @@ local function _step_game()
         game:process({})
     end
 end
+local function _ensure_memorized_state(num)
+    if running_replay_control then
+        if not running_replay_control.memorized_state then
+            running_replay_control.memorized_state = {}
+        end
+        if not running_replay_control.memorized_state[num] then
+            if num <= 0 then
+                local s = running_replay.state
+                if not s then
+                    s = origin_game_state
+                end
+                running_replay_control.memorized_state[num] = _table_deepcopy(s)
+            else
+                _ensure_memorized_state(num - 1)
+                game.state = _table_deepcopy(running_replay_control.memorized_state[num - 1])
+                for i = 1, memorized_game_state_steps do
+                    _step_game()
+                end
+                running_replay_control.memorized_state[num] = _table_deepcopy(game.state)
+            end
+        end
+    end
+end
+
+local function _try_navigate_to_arbitrary_frame(f)
+    if running_replay_control then
+        local start_frame = 0
+        if running_replay.state then
+            start_frame = running_replay.state.frame
+        end
+        f = math.max(f, start_frame)
+        local memorized_num = math.floor((f - start_frame) / memorized_game_state_steps)
+        local rest_step_count = f - start_frame - memorized_num * memorized_game_state_steps
+        _ensure_memorized_state(memorized_num)
+        game.state = _table_deepcopy(running_replay_control.memorized_state[memorized_num])
+        for i = 1, rest_step_count do
+            _step_game()
+        end
+    end
+end
 
 local function _try_single_step(v)
     if running_replay_control then
         running_replay_control.method = 1
-        if v > 0 then
-            for i = 1, running_replay_speed_scales[running_replay_control.speed_idx] do
+        if v >= 0 then
+            for i = 1, running_replay_speed_scales[running_replay_control.speed_idx] * v do
                 _step_game()
             end
+        else
+            _try_navigate_to_arbitrary_frame(game.state.frame + running_replay_speed_scales[running_replay_control.speed_idx] * v)
         end
     end
 end
@@ -192,8 +236,7 @@ function love.keypressed(k)
                     if running_replay.state then
                         game.state = _table_deepcopy(running_replay.state)
                     else
-                        local new_game = dofile("game.lua")
-                        game.state = new_game.state
+                        game.state = _table_deepcopy(origin_game_state)
                     end
                     if not running_replay_control then
                         running_replay_control = {
@@ -235,6 +278,7 @@ function love.keypressed(k)
     else
         if k == "space" then
             game = dofile("game.lua")
+            origin_game_state = _table_deepcopy(game.state)
             local gw, gh = game.config_data.game_width, game.config_data.game_height
             game_canvas = love.graphics.newCanvas(gw, gh)
             ENGINE.assets.setup(game.asset_data)
