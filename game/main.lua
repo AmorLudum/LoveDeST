@@ -35,6 +35,7 @@ function main.draw(state, data)
     love.graphics.setFont(ENGINE.assets.get("big_font"))
     love.graphics.print(lume.serialize(state), 10, 100)
     love.graphics.print("Hi, I'm Mark Brown, and this is Game Maker's Toolkit...", 10, 150)
+    love.graphics.print(string.format("FRAME: %d", state.frame), 10, 200)
     love.graphics.draw(ENGINE.assets.get("my_icon"), state.x, state.y)
 end
 
