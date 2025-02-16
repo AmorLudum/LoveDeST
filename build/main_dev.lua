@@ -3,8 +3,6 @@ ENGINE = require"engine"
 
 local game
 local origin_game_state
-local lurker = require("test.lib.lurker")
-local test_monitor = require("test.monitor.test_monitor")
 local bins = {}
 local state_slot_idx = 0
 local bottom_toast_state = {
@@ -133,11 +131,42 @@ end
 
 function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest", 1)
-    bins = lurker.listdir("test/bin")
+    game = dofile("game.lua")
+    origin_game_state = _table_deepcopy(game.state)
+    local gw, gh = game.config_data.game_width, game.config_data.game_height
+    game_canvas = love.graphics.newCanvas(gw, gh)
+    ENGINE.assets.setup(game.assets_data)
+    love.filesystem.setIdentity(game.config_data.identity.."[DEV]")
+    love.window.setTitle(game.config_data.identity)
+    local saved_settings_str = love.filesystem.read("settings.txt")
+    local saved_settings = nil
+    if saved_settings_str then
+        saved_settings = lume.deserialize(love.filesystem.read("settings.txt"))
+    end
+    if not saved_settings then
+        saved_settings = game.config_data.default_settings
+        love.filesystem.write("settings.txt", lume.serialize(saved_settings))
+    end
+    local ws = saved_settings.window_scale
+    local ow, oh, of = love.window.getMode()
+    of.fullscreen = saved_settings.fullscreen
+    if saved_settings.fullscreen then
+        love.window.setMode(0, 0, of)
+    else
+        love.window.setMode(gw * ws, gh * ws, of)
+    end
+    _process_command({
+        type = "set_preferences",
+        preferences = _table_deepcopy(saved_settings.preferences)
+    })
+    local rng = love.math.newRandomGenerator(os.time())
+    _process_command({
+        type = "set_rng_state",
+        rng_state = rng:getState()
+    })
 end
 
 function love.update(dt)
-    lurker.update()
     local step_count = 0
     if not running_replay_control then
         step_count = 1
@@ -232,6 +261,7 @@ function love.keypressed(k)
                     recording_replay.state = _table_deepcopy(game.state)
                 end
                 recording_replay.cmds = {}
+                recording_replay.commit = require("version")
            end
         elseif k == "f" then
             if recording_replay then
@@ -285,19 +315,6 @@ function love.keypressed(k)
                 running_replay = nil
                 running_replay_control = nil
                 _toast("replay finished")
-            elseif k == "x" then
-                game = nil
-                ENGINE.assets.clear()
-                if game_canvas then
-                    game_canvas:release()
-                    game_canvas = nil
-                end
-            elseif k == "c" then
-                if monitor_draw_func then
-                    monitor_draw_func = nil
-                else
-                    monitor_draw_func = dofile("test/monitor/test_monitor.lua")
-                end
             elseif k == "up" then
                 _try_switch_replay_speed_scale(1)
             elseif k == "down" then
@@ -313,53 +330,6 @@ function love.keypressed(k)
                     type = "keypressed",
                     key = k
                 })
-            end
-        end
-    else
-        if k == "space" then
-            game = dofile("game.lua")
-            origin_game_state = _table_deepcopy(game.state)
-            local gw, gh = game.config_data.game_width, game.config_data.game_height
-            game_canvas = love.graphics.newCanvas(gw, gh)
-            ENGINE.assets.setup(game.assets_data)
-            love.filesystem.setIdentity(game.config_data.identity.."[DEV]")
-            love.window.setTitle(game.config_data.identity)
-            local saved_settings_str = love.filesystem.read("settings.txt")
-            local saved_settings = nil
-            if saved_settings_str then
-                saved_settings = lume.deserialize(love.filesystem.read("settings.txt"))
-            end
-            if not saved_settings then
-                saved_settings = game.config_data.default_settings
-                love.filesystem.write("settings.txt", lume.serialize(saved_settings))
-            end
-            local ws = saved_settings.window_scale
-            local ow, oh, of = love.window.getMode()
-            of.fullscreen = saved_settings.fullscreen
-            if saved_settings.fullscreen then
-                love.window.setMode(0, 0, of)
-            else
-                love.window.setMode(gw * ws, gh * ws, of)
-            end
-            _process_command({
-                type = "set_preferences",
-                preferences = _table_deepcopy(saved_settings.preferences)
-            })
-            local rng = love.math.newRandomGenerator(os.time())
-            _process_command({
-                type = "set_rng_state",
-                rng_state = rng:getState()
-            })
-        else
-            local game_idx = tonumber(k)
-            if game_idx then
-                local game_path = bins[game_idx]
-                local result, err = pcall(function()
-                    game = dofile(game_path)
-                end)
-                if not result then
-                    print(err)
-                end
             end
         end
     end
