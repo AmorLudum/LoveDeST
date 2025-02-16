@@ -6,8 +6,12 @@ function main.default_state()
             x = 10,
             y = 10
         },
+        dac = 0,
         score = 0,
-        input = {}
+        input = {},
+        assets_test = {
+            idx = 1
+        }
     }
 end
 
@@ -61,7 +65,22 @@ local function _try_generate_coin(state)
         }
     end
 end
-local function _step(state, data)
+
+local function _test_step_assets(state, assets_data)
+    if _is_key_just_down(state, "w") then
+        state.assets_test.idx = lume.clamp(state.assets_test.idx - 1, 1, #assets_data.dynamic_groups)
+    end
+    if _is_key_just_down(state, "s") then
+        state.assets_test.idx = lume.clamp(state.assets_test.idx + 1, 1, #assets_data.dynamic_groups)
+    end
+    if _is_key_just_down(state, "d") then
+        state.dac = ENGINE.assets.load_dynamic_group(assets_data.dynamic_groups[state.assets_test.idx].name)
+    end
+    if _is_key_just_down(state, "a") then
+        state.dac = ENGINE.assets.unload_dynamic_group(assets_data.dynamic_groups[state.assets_test.idx].name)
+    end
+end
+local function _step(state, data, assets_data)
     local dx, dy = 0, 0
     if _is_key_down(state, "d") then
         dx = dx + 1
@@ -83,11 +102,12 @@ local function _step(state, data)
     end
     _process_get_coin(state, data)
     _try_generate_coin(state)
+    _test_step_assets(state, assets_data)
 end
 
-function main.process(cmd, state, data, events)
+function main.process(cmd, state, data, assets_data, events)
     if not cmd.type then
-        _step(state, data)
+        _step(state, data, assets_data)
         _clear_input_just(state)
     elseif cmd.type == "keypressed" then
         _handle_input(cmd.key, true, state)
@@ -100,8 +120,9 @@ function main.process(cmd, state, data, events)
     end
 end
 
-function main.draw(state, data)
+function main.draw(state, data, assets_data)
     love.graphics.clear(0.2, 0.2, 0.4, 1.0)
+    local r, g, b, a = love.graphics.getColor()
     love.graphics.setFont(ENGINE.assets.get("normal_font"))
     local py = 10
     local p = function(str)
@@ -113,6 +134,16 @@ function main.draw(state, data)
     p(string.format("INPUT:", state.frame))
     p(string.format("PLAYER: %s, %s", state.player_state.x, state.player_state.y))
     p(string.format("COIN: %s, %s", state.coin.x, state.coin.y))
+    p(string.format("state.assets_test.idx: %s", state.assets_test.idx))
+    for i, v in ipairs(assets_data.dynamic_groups) do
+        if i == state.assets_test.idx then
+            love.graphics.setColor(r * 0.8, g * 0.8, b * 0.8, a)
+        else
+            love.graphics.setColor(r * 0.5, g * 0.5, b * 0.5, a)
+        end
+        p(string.format(" - %s", v.name))
+    end
+    love.graphics.setColor(r, g, b, a)
     local my_icon = ENGINE.assets.get("my_icon")
     local sx, sy = data.player_data.size / my_icon:getWidth(), data.player_data.size / my_icon:getHeight()
     love.graphics.draw(my_icon, state.player_state.x, state.player_state.y, 0, sx, sy)

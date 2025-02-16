@@ -44,6 +44,12 @@ local function _try_switch_replay_speed_scale(v)
         _toast(string.format("switch replay speed scale: x%d", running_replay_speed_scales[running_replay_control.speed_idx]))
     end
 end
+local function _restore_game_state(new_state)
+    if game then
+        game.state = new_state
+        ENGINE.assets.restore_dynamic_group_by_code(game.state.dac or 0)
+    end
+end
 
 local function _step_game()
     if game then
@@ -72,7 +78,7 @@ local function _ensure_memorized_state(num)
                 running_replay_control.memorized_state[num] = _table_deepcopy(s)
             else
                 _ensure_memorized_state(num - 1)
-                game.state = _table_deepcopy(running_replay_control.memorized_state[num - 1])
+                _restore_game_state(_table_deepcopy(running_replay_control.memorized_state[num - 1]))
                 for i = 1, memorized_game_state_steps do
                     _step_game()
                 end
@@ -92,7 +98,7 @@ local function _try_navigate_to_arbitrary_frame(f)
         local memorized_num = math.floor((f - start_frame) / memorized_game_state_steps)
         local rest_step_count = f - start_frame - memorized_num * memorized_game_state_steps
         _ensure_memorized_state(memorized_num)
-        game.state = _table_deepcopy(running_replay_control.memorized_state[memorized_num])
+        _restore_game_state(_table_deepcopy(running_replay_control.memorized_state[memorized_num]))
         for i = 1, rest_step_count do
             _step_game()
         end
@@ -246,7 +252,7 @@ function love.keypressed(k)
                 love.filesystem.write(_slot_file_name(), lume.serialize(game.state))
                 _toast(string.format("state saved: #%d", state_slot_idx))
             elseif k == "e" then
-                game.state = lume.deserialize(love.filesystem.read(_slot_file_name()))
+                _restore_game_state(lume.deserialize(love.filesystem.read(_slot_file_name())))
                 _toast(string.format("state loaded: #%d", state_slot_idx))
             elseif k == "d" then
                 os.execute("start "..love.filesystem.getSaveDirectory())
@@ -260,9 +266,9 @@ function love.keypressed(k)
                         end
                     end
                     if running_replay.state then
-                        game.state = _table_deepcopy(running_replay.state)
+                        _restore_game_state(_table_deepcopy(running_replay.state))
                     else
-                        game.state = _table_deepcopy(origin_game_state)
+                        _restore_game_state(_table_deepcopy(origin_game_state))
                     end
                     if not running_replay_control then
                         running_replay_control = {
@@ -313,7 +319,7 @@ function love.keypressed(k)
             origin_game_state = _table_deepcopy(game.state)
             local gw, gh = game.config_data.game_width, game.config_data.game_height
             game_canvas = love.graphics.newCanvas(gw, gh)
-            ENGINE.assets.setup(game.asset_data)
+            ENGINE.assets.setup(game.assets_data)
             love.filesystem.setIdentity(game.config_data.identity)
             love.window.setTitle(game.config_data.identity)
             local saved_settings_str = love.filesystem.read("settings.txt")
